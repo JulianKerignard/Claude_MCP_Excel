@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "excel-viz": {
+      "command": "python",
+      "args": ["path/to/your/excel_viz.py"]
+    }
+  }
+}
