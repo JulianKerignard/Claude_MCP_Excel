@@ -1,7 +1,7 @@
 # MCP pour Claude Desktop 💻
 
-Ce document présente le MCP (Multi-Component Plugin) développé pour interagir avec Claude via l'application desktop.
-
+Ce document présente le MCP (Model Context Protocol) développé pour interagir avec Claude via l'application desktop.
+https://www.anthropic.com/news/model-context-protocol
 ## 1. Présentation 📜
 
 Le MCP permet :
