@@ -49,8 +49,13 @@ Le MCP permet :
 
 1.  Ouvrez l'application Claude Desktop (Windows ou macOS).
 2.  Dans la barre latérale ou le menu des plugins, sélectionnez `excel-viz` (ou tout autre serveur configuré dans `mcpServers`).
-3.  Envoyez vos requêtes directement depuis l’interface intégrée du MCP : comptes-rendus, graphiques, etc. 🚀
-4.  Le MCP se charge automatiquement au démarrage de Claude Desktop, sans commande à lancer manuellement. ✅
+![image](https://github.com/user-attachments/assets/aba9ecb7-0747-4155-9619-6e4826916fac)
+
+
+![image](https://github.com/user-attachments/assets/de57fc97-d3d3-409c-85c4-5bffe382cea9)
+
+4.  Envoyez vos requêtes directement depuis l’interface intégrée du MCP : comptes-rendus, graphiques, etc. 🚀
+5.  Le MCP se charge automatiquement au démarrage de Claude Desktop, sans commande à lancer manuellement. ✅
 
 ## 5. Exemple de prompt 💡
 
