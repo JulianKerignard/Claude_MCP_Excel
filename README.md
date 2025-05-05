@@ -70,3 +70,35 @@ Génère un résumé statistique des données dans la feuille "Ventes" du fichie
 ```text
 Dans le fichier "employés.xlsx", trouve toutes les lignes où la colonne "Salaire" est supérieure à 50000
 ```
+
+## 6. Points importants à retenir !!
+
+### Chemins de fichiers : Vous pouvez utiliser des chemins relatifs (par rapport à votre dossier Documents par défaut) ou des chemins absolus.
+```text
+// Chemin relatif (à partir du dossier Documents)
+budget.xlsx
+
+// Sous-dossier dans Documents
+Finances/budget.xlsx
+
+// Chemin absolu
+D:/MesDonnées/Excel/budget.xlsx
+```
+### Syntaxe des requêtes : Pour la fonction excel_query, utilisez la syntaxe similaire à celle de pandas :
+```text
+// Exemples de requêtes valides
+"Âge > 30"
+"Département == 'Marketing'"
+"Ventes > 1000 and Région == 'Nord'"
+```
+
+### Nom des feuilles : Si vous ne spécifiez pas de nom de feuille, le serveur utilisera la première feuille du classeur par défaut.
+### Grandes quantités de données : Si votre fichier Excel contient beaucoup de données, pensez à spécifier la feuille et à utiliser des requêtes ciblées pour éviter d'afficher des tableaux trop volumineux.
+
+## 7. Dépannage courant
+### Si Claude vous indique qu'il a des difficultés à accéder au fichier, vérifiez :
+
+Que le chemin du fichier est correct
+Que le fichier n'est pas ouvert dans Excel (ce qui peut parfois bloquer l'accès)
+Que le nom de la feuille est bien orthographié et existe dans le fichier
+
