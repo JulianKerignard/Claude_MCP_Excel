@@ -464,6 +464,122 @@ def get_column_names(file_path: str, sheet_name: str = None) -> str:
         return f"Erreur lors de la récupération des noms de colonnes: {str(e)}"
 
 
+@mcp.tool()
+def create_excel_chart(file_path: str, x_column: str, y_columns: str, chart_type: str = "line",
+                       sheet_name: str = None, new_sheet_name: str = None, title: str = "Graphique") -> str:
+    """
+    Crée un graphique et l'ajoute directement dans une nouvelle feuille du fichier Excel.
+
+    Args:
+        file_path: Chemin du fichier Excel
+        x_column: Nom de la colonne pour l'axe X
+        y_columns: Noms des colonnes pour l'axe Y (séparés par des virgules)
+        chart_type: Type de graphique (line, bar, pie, scatter)
+        sheet_name: Nom de la feuille source des données (si None, utilise la première feuille)
+        new_sheet_name: Nom de la nouvelle feuille à créer (si None, utilise "Graphique_[timestamp]")
+        title: Titre du graphique
+
+    Returns:
+        Message de confirmation ou d'erreur
+    """
+    try:
+        # Gérer les chemins relatifs
+        if not os.path.isabs(file_path):
+            file_path = os.path.join(DEFAULT_EXCEL_DIR, file_path)
+
+        # Vérifier que le fichier existe
+        if not os.path.exists(file_path):
+            return f"Erreur: Le fichier '{file_path}' n'existe pas."
+
+        # Importer les bibliothèques nécessaires
+        from openpyxl import load_workbook
+        from openpyxl.chart import (
+            LineChart, BarChart, PieChart, ScatterChart,
+            Reference, Series
+        )
+        from openpyxl.utils.dataframe import dataframe_to_rows
+        import datetime
+
+        # Lire le fichier Excel avec pandas
+        if sheet_name:
+            df = pd.read_excel(file_path, sheet_name=sheet_name)
+        else:
+            df = pd.read_excel(file_path)
+
+        # Vérifier que les colonnes existent
+        if x_column not in df.columns:
+            return f"Erreur: La colonne '{x_column}' n'existe pas dans le fichier."
+
+        y_columns_list = [col.strip() for col in y_columns.split(',')]
+        for col in y_columns_list:
+            if col not in df.columns:
+                return f"Erreur: La colonne '{col}' n'existe pas dans le fichier."
+
+        # Créer un nom pour la nouvelle feuille si non spécifié
+        if not new_sheet_name:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            new_sheet_name = f"Graphique_{timestamp}"
+
+        # Extraire les données pertinentes
+        chart_data = df[[x_column] + y_columns_list].copy()
+
+        # Charger le classeur avec openpyxl
+        wb = load_workbook(file_path)
+
+        # Créer une nouvelle feuille
+        if new_sheet_name in wb.sheetnames:
+            # Si la feuille existe déjà, on la supprime et on la recrée
+            idx = wb.sheetnames.index(new_sheet_name)
+            wb.remove(wb.worksheets[idx])
+
+        ws = wb.create_sheet(title=new_sheet_name)
+
+        # Écrire les données dans la nouvelle feuille
+        for r in dataframe_to_rows(chart_data, index=False, header=True):
+            ws.append(r)
+
+        # Créer le graphique selon le type demandé
+        if chart_type.lower() == "line":
+            chart = LineChart()
+        elif chart_type.lower() == "bar":
+            chart = BarChart()
+        elif chart_type.lower() == "pie":
+            if len(y_columns_list) > 1:
+                return "Erreur: Le graphique circulaire ne peut utiliser qu'une seule colonne Y."
+            chart = PieChart()
+        elif chart_type.lower() == "scatter":
+            chart = ScatterChart()
+        else:
+            return f"Erreur: Type de graphique '{chart_type}' non supporté."
+
+        # Configurer le graphique
+        chart.title = title
+        chart.x_axis.title = x_column
+        chart.y_axis.title = "Valeurs" if len(y_columns_list) > 1 else y_columns_list[0]
+
+        # Définir les plages de données
+        data = Reference(ws, min_col=2, min_row=1, max_row=len(chart_data) + 1, max_col=len(y_columns_list) + 1)
+        cats = Reference(ws, min_col=1, min_row=2, max_row=len(chart_data) + 1)
+
+        # Ajouter les données au graphique
+        chart.add_data(data, titles_from_data=True)
+
+        # Pour les graphiques autres que circulaires, définir les catégories
+        if chart_type.lower() != "pie":
+            chart.set_categories(cats)
+
+        # Ajouter le graphique à la feuille
+        ws.add_chart(chart, "A" + str(len(chart_data) + 5))
+
+        # Enregistrer le fichier
+        wb.save(file_path)
+
+        return f"Graphique '{title}' créé avec succès dans la feuille '{new_sheet_name}' du fichier '{os.path.basename(file_path)}'."
+
+    except Exception as e:
+        return f"Erreur lors de la création du graphique dans Excel: {str(e)}"
+
+
 @mcp.resource("excel://{file_path}")
 def excel_resource(file_path: str) -> str:
     """
