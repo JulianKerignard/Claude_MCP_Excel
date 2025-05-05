@@ -59,8 +59,14 @@ Le MCP permet :
 Peux-tu me lister toutes les feuilles du fichier Excel "budget.xlsx" dans mon dossier Documents ?
 ```
 ### 2. Lire le contenu d'une feuille
+```text
 Montre-moi le contenu de la feuille "Revenus" dans le fichier "finances2024.xlsx"
+```
 ### 3. Obtenir un résumé statistique
+```text
 Génère un résumé statistique des données dans la feuille "Ventes" du fichier "rapport_trimestriel.xlsx"
+```
 ### 4. Exécuter une requête sur les données
+```text
 Dans le fichier "employés.xlsx", trouve toutes les lignes où la colonne "Salaire" est supérieure à 50000
+```
