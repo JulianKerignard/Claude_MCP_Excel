@@ -1010,7 +1010,7 @@ def get_column_names(file_path: str, sheet_name: str = None) -> str:
 @mcp.tool()
 def create_excel_chart(file_path: str, x_column: str, y_columns: str, chart_type: str = "line",
                        sheet_name: str = None, new_sheet_name: str = None, title: str = "Graphique",
-                       aggregation: str = None) -> str:
+                       aggregation: str = None, debug: bool = False) -> str:
     """
     Crée un graphique et l'ajoute directement dans une nouvelle feuille du fichier Excel.
 
@@ -1023,6 +1023,7 @@ def create_excel_chart(file_path: str, x_column: str, y_columns: str, chart_type
         new_sheet_name: Nom de la nouvelle feuille à créer (si None, utilise "Graphique_[timestamp]")
         title: Titre du graphique
         aggregation: Méthode d'agrégation ('sum', 'mean', 'count', 'min', 'max')
+        debug: Mode debug pour afficher plus d'informations en cas d'erreur
 
     Returns:
         Message de confirmation ou d'erreur
@@ -1193,7 +1194,11 @@ def create_excel_chart(file_path: str, x_column: str, y_columns: str, chart_type
         return message
 
     except Exception as e:
-        return f"Erreur lors de la création du graphique dans Excel: {str(e)}"
+        if debug:
+            import traceback
+            return f"Erreur lors de la création du graphique dans Excel: {str(e)}\n\nTrace complète:\n{traceback.format_exc()}"
+        else:
+            return f"Erreur lors de la création du graphique dans Excel: {str(e)}"
 
 
 @mcp.tool()
@@ -1465,6 +1470,407 @@ def create_aggregated_chart(file_path: str, x_column: str, y_column: str,
         return f"Erreur lors de la création du graphique agrégé: {str(e)}"
 
 
+@mcp.tool()
+def append_excel_data(file_path: str, data: str, sheet_name: str = None,
+                      start_row: int = None, column_names: str = None) -> str:
+    """
+    Ajoute des données à un tableau existant dans un fichier Excel.
+
+    Args:
+        file_path: Chemin du fichier Excel (peut être relatif au répertoire par défaut)
+        data: Données à ajouter au format CSV (lignes séparées par des sauts de ligne, colonnes par des virgules)
+        sheet_name: Nom de la feuille cible (si None, utilise la première feuille)
+        start_row: Ligne à partir de laquelle ajouter les données (si None, ajoute à la fin)
+        column_names: Noms des colonnes pour les données (séparées par des virgules, si None, utilise l'ordre existant)
+
+    Returns:
+        Message de confirmation ou d'erreur
+    """
+    try:
+        # Gérer les chemins relatifs
+        if not os.path.isabs(file_path):
+            file_path = os.path.join(DEFAULT_EXCEL_DIR, file_path)
+
+        # Vérifier que le fichier existe
+        if not os.path.exists(file_path):
+            return f"Erreur: Le fichier '{file_path}' n'existe pas."
+
+        # Charger le classeur avec openpyxl pour la modification
+        from openpyxl import load_workbook
+        wb = load_workbook(file_path)
+
+        # Sélectionner la feuille
+        if sheet_name and sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+        else:
+            ws = wb.active
+            sheet_name = ws.title
+
+        # Traiter les données à ajouter
+        csv_data = data.strip().split('\n')
+        rows_to_add = []
+        for row in csv_data:
+            if row.strip():  # Ignorer les lignes vides
+                rows_to_add.append([val.strip() for val in row.split(',')])
+
+        if not rows_to_add:
+            return "Erreur: Aucune donnée valide à ajouter."
+
+        # Déterminer la position de départ
+        if start_row is None:
+            # Trouver la dernière ligne avec des données
+            max_row = ws.max_row
+            while max_row > 0:
+                if any([ws.cell(row=max_row, column=col).value is not None
+                        for col in range(1, ws.max_column + 1)]):
+                    break
+                max_row -= 1
+            start_row = max_row + 1
+
+        # Si des noms de colonnes sont spécifiés, les utiliser pour mapper les données
+        if column_names:
+            # Lire les entêtes actuelles (première ligne)
+            headers = [ws.cell(row=1, column=i).value for i in range(1, ws.max_column + 1)]
+            headers = [h for h in headers if h is not None]  # Filtrer les None
+
+            # Obtenir les colonnes demandées
+            requested_cols = [col.strip() for col in column_names.split(',')]
+
+            # Mapper les index de colonnes
+            col_indices = []
+            missing_cols = []
+            for col_name in requested_cols:
+                if col_name in headers:
+                    col_indices.append(headers.index(col_name) + 1)
+                else:
+                    missing_cols.append(col_name)
+                    col_indices.append(None)
+
+            if missing_cols:
+                return f"Erreur: Colonnes non trouvées: {', '.join(missing_cols)}"
+
+            # Réorganiser les données selon le mapping
+            for i, row_data in enumerate(rows_to_add):
+                if len(row_data) != len(requested_cols):
+                    return f"Erreur: La ligne {i + 1} contient {len(row_data)} valeurs mais {len(requested_cols)} colonnes sont spécifiées."
+
+                for j, (col_idx, value) in enumerate(zip(col_indices, row_data)):
+                    if col_idx is not None:
+                        ws.cell(row=start_row + i, column=col_idx, value=value)
+        else:
+            # Ajouter les données en séquence
+            for i, row_data in enumerate(rows_to_add):
+                for j, value in enumerate(row_data):
+                    ws.cell(row=start_row + i, column=j + 1, value=value)
+
+        # Enregistrer le fichier
+        wb.save(file_path)
+
+        return f"Données ajoutées avec succès dans '{os.path.basename(file_path)}', feuille '{sheet_name}', à partir de la ligne {start_row}. {len(rows_to_add)} lignes ajoutées."
+
+    except Exception as e:
+        return f"Erreur lors de l'ajout des données: {str(e)}"
+
+
+@mcp.tool()
+def update_excel_cell(file_path: str, sheet_name: str = None,
+                      cell_reference: str = None, row: int = None, column: str = None,
+                      value: str = None, formula: str = None) -> str:
+    """
+    Modifie une cellule spécifique dans une feuille Excel.
+
+    Args:
+        file_path: Chemin du fichier Excel (peut être relatif au répertoire par défaut)
+        sheet_name: Nom de la feuille (si None, utilise la première feuille)
+        cell_reference: Référence de la cellule (ex: "A1", "B5") - alternative à row/column
+        row: Numéro de ligne (si cell_reference n'est pas utilisé)
+        column: Lettre de colonne ou nom de colonne (si cell_reference n'est pas utilisé)
+        value: Nouvelle valeur à insérer (texte, nombre)
+        formula: Formule à insérer (commence par =, prioritaire sur value si les deux sont fournis)
+
+    Returns:
+        Message de confirmation ou d'erreur
+    """
+    try:
+        # Gérer les chemins relatifs
+        if not os.path.isabs(file_path):
+            file_path = os.path.join(DEFAULT_EXCEL_DIR, file_path)
+
+        # Vérifier que le fichier existe
+        if not os.path.exists(file_path):
+            return f"Erreur: Le fichier '{file_path}' n'existe pas."
+
+        # Charger le classeur avec openpyxl pour la modification
+        from openpyxl import load_workbook
+        from openpyxl.utils import column_index_from_string, get_column_letter
+
+        wb = load_workbook(file_path)
+
+        # Sélectionner la feuille
+        if sheet_name and sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+        else:
+            ws = wb.active
+            sheet_name = ws.title
+
+        # Déterminer la cellule cible
+        if cell_reference:
+            # Utiliser la référence directe
+            target_cell = ws[cell_reference]
+        elif row is not None and column:
+            # Utiliser la combinaison ligne/colonne
+            if column.isalpha():
+                # Si c'est une lettre de colonne (A, B, C...)
+                col_idx = column_index_from_string(column)
+            else:
+                # Si c'est un nom de colonne, rechercher dans la première ligne
+                col_names = [ws.cell(row=1, column=i).value for i in range(1, ws.max_column + 1)]
+                if column in col_names:
+                    col_idx = col_names.index(column) + 1
+                else:
+                    return f"Erreur: Colonne '{column}' non trouvée dans la feuille."
+
+            target_cell = ws.cell(row=row, column=col_idx)
+        else:
+            return "Erreur: Vous devez spécifier soit cell_reference, soit row et column."
+
+        # Mettre à jour la cellule
+        if formula and formula.startswith('='):
+            target_cell.value = formula
+        elif value is not None:
+            # Tenter de convertir la valeur si c'est un nombre
+            try:
+                if '.' in value:
+                    target_cell.value = float(value)
+                else:
+                    target_cell.value = int(value)
+            except ValueError:
+                target_cell.value = value
+        else:
+            return "Erreur: Vous devez spécifier soit value, soit formula."
+
+        # Enregistrer le fichier
+        wb.save(file_path)
+
+        # Préparer le message de confirmation
+        cell_id = cell_reference if cell_reference else f"{column}{row}"
+        return f"Cellule {cell_id} mise à jour dans la feuille '{sheet_name}' du fichier '{os.path.basename(file_path)}'."
+
+    except Exception as e:
+        return f"Erreur lors de la mise à jour de la cellule: {str(e)}"
+
+
+@mcp.tool()
+def insert_excel_data(file_path: str, data: str, sheet_name: str = None,
+                      start_cell: str = "A1", format_as_table: bool = False,
+                      headers_included: bool = True, apply_styles: bool = False) -> str:
+    """
+    Insère des données selon des directives précises dans un format tabulaire.
+
+    Args:
+        file_path: Chemin du fichier Excel (peut être relatif au répertoire par défaut)
+        data: Données au format CSV (lignes séparées par des sauts de ligne, colonnes par des virgules)
+        sheet_name: Nom de la feuille (si None, utilise la première feuille)
+        start_cell: Cellule de départ pour l'insertion (ex: "A1")
+        format_as_table: Si True, formate les données comme un tableau Excel
+        headers_included: Si True, considère la première ligne comme des en-têtes
+        apply_styles: Si True, applique des styles basiques (bordures, couleurs alternées)
+
+    Returns:
+        Message de confirmation ou d'erreur
+    """
+    try:
+        # Gérer les chemins relatifs
+        if not os.path.isabs(file_path):
+            file_path = os.path.join(DEFAULT_EXCEL_DIR, file_path)
+
+        # Vérifier que le fichier existe
+        if not os.path.exists(file_path):
+            return f"Erreur: Le fichier '{file_path}' n'existe pas."
+
+        # Charger le classeur avec openpyxl pour la modification
+        from openpyxl import load_workbook
+        from openpyxl.utils import column_index_from_string, get_column_letter
+        from openpyxl.styles import PatternFill, Border, Side, Alignment, Font
+        from openpyxl.worksheet.table import Table, TableStyleInfo
+
+        wb = load_workbook(file_path)
+
+        # Sélectionner la feuille
+        if sheet_name and sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+        else:
+            ws = wb.active
+            sheet_name = ws.title
+
+        # Analyser la cellule de départ
+        col_letter = ''.join(filter(str.isalpha, start_cell))
+        row_num = int(''.join(filter(str.isdigit, start_cell)))
+        col_num = column_index_from_string(col_letter)
+
+        # Traiter les données à insérer
+        csv_data = data.strip().split('\n')
+        rows_to_insert = []
+        for row in csv_data:
+            if row.strip():  # Ignorer les lignes vides
+                rows_to_insert.append([val.strip() for val in row.split(',')])
+
+        if not rows_to_insert:
+            return "Erreur: Aucune donnée valide à insérer."
+
+        # Insérer les données
+        for i, row_data in enumerate(rows_to_insert):
+            for j, value in enumerate(row_data):
+                # Tenter de convertir la valeur si c'est un nombre
+                try:
+                    if '.' in value:
+                        cell_value = float(value)
+                    else:
+                        cell_value = int(value)
+                except ValueError:
+                    cell_value = value
+
+                ws.cell(row=row_num + i, column=col_num + j, value=cell_value)
+
+        # Appliquer les styles si demandé
+        if apply_styles:
+            # Définir les styles
+            header_fill = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type="solid")
+            alt_row_fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+            thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                                 top=Side(style='thin'), bottom=Side(style='thin'))
+            bold_font = Font(bold=True)
+            center_align = Alignment(horizontal='center')
+
+            # Appliquer les styles
+            num_rows = len(rows_to_insert)
+            num_cols = max(len(row) for row in rows_to_insert)
+
+            for i in range(num_rows):
+                for j in range(num_cols):
+                    cell = ws.cell(row=row_num + i, column=col_num + j)
+                    cell.border = thin_border
+
+                    # Styles des en-têtes
+                    if headers_included and i == 0:
+                        cell.fill = header_fill
+                        cell.font = bold_font
+                        cell.alignment = center_align
+                    # Lignes alternées
+                    elif i % 2 == 1:
+                        cell.fill = alt_row_fill
+
+        # Créer un tableau Excel si demandé
+        if format_as_table and len(rows_to_insert) > 0:
+            table_range = f"{start_cell}:{get_column_letter(col_num + len(rows_to_insert[0]) - 1)}{row_num + len(rows_to_insert) - 1}"
+            table_name = f"Table_{sheet_name.replace(' ', '_')}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+            # Créer et ajouter le tableau
+            table = Table(displayName=table_name, ref=table_range)
+            style = TableStyleInfo(name="TableStyleMedium9", showFirstColumn=False,
+                                   showLastColumn=False, showRowStripes=True, showColumnStripes=False)
+            table.tableStyleInfo = style
+
+            # Supprimer tout tableau existant qui pourrait chevaucher
+            for existing_table in list(ws.tables.values()):
+                if existing_table.ref:
+                    ws.tables.pop(existing_table.name, None)
+
+            ws.add_table(table)
+
+        # Enregistrer le fichier
+        wb.save(file_path)
+
+        result = f"Données insérées avec succès dans '{os.path.basename(file_path)}', feuille '{sheet_name}', "
+        result += f"à partir de la cellule {start_cell}. {len(rows_to_insert)} lignes insérées."
+
+        if format_as_table:
+            result += f" Les données ont été formatées en tableau Excel nommé '{table_name}'."
+        if apply_styles:
+            result += " Des styles ont été appliqués pour une meilleure lisibilité."
+
+        return result
+
+    except Exception as e:
+        return f"Erreur lors de l'insertion des données: {str(e)}"
+
+
+@mcp.tool()
+def test_excel_modifications(file_path: str) -> str:
+    """
+    Fonction de diagnostic pour tester si un fichier Excel peut être modifié.
+    Crée une copie temporaire du fichier et tente d'y apporter des modifications.
+
+    Args:
+        file_path: Chemin du fichier Excel à tester
+
+    Returns:
+        Résultat du test de diagnostic
+    """
+    try:
+        # Gérer les chemins relatifs
+        if not os.path.isabs(file_path):
+            file_path = os.path.join(DEFAULT_EXCEL_DIR, file_path)
+
+        # Vérifier que le fichier existe
+        if not os.path.exists(file_path):
+            return f"Erreur: Le fichier '{file_path}' n'existe pas."
+
+        import tempfile
+        import shutil
+        from openpyxl import load_workbook
+
+        # Créer un fichier temporaire
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp_file:
+            temp_path = temp_file.name
+
+        # Copier le fichier original
+        shutil.copy2(file_path, temp_path)
+
+        # Tester les modifications
+        wb = load_workbook(temp_path)
+        ws = wb.active
+
+        # Tester l'écriture dans une cellule
+        test_cell = ws.cell(row=1, column=1)
+        original_value = test_cell.value
+        test_cell.value = "TEST_MODIFICATION"
+
+        # Tester l'ajout d'une nouvelle feuille
+        if "TEST_SHEET" in wb.sheetnames:
+            wb.remove(wb["TEST_SHEET"])
+        wb.create_sheet("TEST_SHEET")
+
+        # Enregistrer les modifications
+        wb.save(temp_path)
+
+        # Recharger pour vérifier
+        wb = load_workbook(temp_path)
+        ws = wb.active
+
+        # Vérifier les modifications
+        tests_passed = []
+        if ws.cell(row=1, column=1).value == "TEST_MODIFICATION":
+            tests_passed.append("Modification de cellule")
+        if "TEST_SHEET" in wb.sheetnames:
+            tests_passed.append("Création de feuille")
+
+        # Nettoyer
+        os.unlink(temp_path)
+
+        # Résultats
+        if len(tests_passed) == 2:
+            return f"Le fichier '{os.path.basename(file_path)}' peut être modifié. Tests réussis: {', '.join(tests_passed)}"
+        else:
+            failed = ["Modification de cellule", "Création de feuille"]
+            for test in tests_passed:
+                failed.remove(test)
+            return f"Attention: Certains tests ont échoué pour '{os.path.basename(file_path)}'. Tests échoués: {', '.join(failed)}"
+
+    except Exception as e:
+        return f"Erreur lors du test de modifications: {str(e)}"
+
+
 @mcp.resource("excel://{file_path}")
 def excel_resource(file_path: str) -> str:
     """
@@ -1495,7 +1901,8 @@ def excel_resource(file_path: str) -> str:
             result["file_name"] = os.path.basename(file_path)
             result["sheets"] = excel_file.sheet_names
             result["file_size"] = f"{os.path.getsize(file_path) / (1024 * 1024):.2f} MB"
-            result["last_modified"] = datetime.fromtimestamp(os.path.getmtime(file_path)).strftime('%Y-%m-%d %H:%M:%S')
+            result["last_modified"] = datetime.datetime.fromtimestamp(os.path.getmtime(file_path)).strftime(
+                '%Y-%m-%d %H:%M:%S')
             result["large_file"] = True
 
             # Obtenir des informations de base sur chaque feuille
@@ -1530,7 +1937,8 @@ def excel_resource(file_path: str) -> str:
             result["file_name"] = os.path.basename(file_path)
             result["sheets"] = excel_file.sheet_names
             result["file_size"] = f"{os.path.getsize(file_path) / 1024:.2f} KB"
-            result["last_modified"] = datetime.fromtimestamp(os.path.getmtime(file_path)).strftime('%Y-%m-%d %H:%M:%S')
+            result["last_modified"] = datetime.datetime.fromtimestamp(os.path.getmtime(file_path)).strftime(
+                '%Y-%m-%d %H:%M:%S')
 
             # Obtenir des informations de base sur chaque feuille
             sheet_info = {}
